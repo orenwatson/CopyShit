@@ -21,6 +21,7 @@ Public Class Form1
     End Sub
 
     Private Sub Button2_Click(sender As Object, e As EventArgs) Handles Button2.Click
+        SaveFileDialog1.FileName = Path.GetFileName(TextBox1.Text)
         SaveFileDialog1.ShowDialog()
     End Sub
 
@@ -92,7 +93,10 @@ Public Class Form1
         ReenableEverything()
     End Sub
 
-    Private Function CheckBlock(ByRef rdfl As FileStream, ByRef wrfl As FileStream, pos As Long, siz As Long, ByRef buf() As Byte, ByRef buf2() As Byte) As Boolean
+
+    Private Const blksiz As Long = 2048
+
+    Private Shared Function CheckBlock(ByRef rdfl As FileStream, ByRef wrfl As FileStream, pos As Long, siz As Long, ByRef buf() As Byte, ByRef buf2() As Byte) As Boolean
         rdfl.Seek(pos, SeekOrigin.Begin)
         rdfl.Read(buf, 0, siz)
         wrfl.Seek(pos, SeekOrigin.Begin)
@@ -100,13 +104,61 @@ Public Class Form1
         Return buf.SequenceEqual(buf2)
     End Function
 
-    Private Sub CopyBlock(ByRef rdfl As FileStream, ByRef wrfl As FileStream, pos As Long, siz As Long, ByRef buf() As Byte)
+    Private Shared Sub CopyBlock(ByRef rdfl As FileStream, ByRef wrfl As FileStream, pos As Long, siz As Long, ByRef buf() As Byte)
         rdfl.Seek(pos, SeekOrigin.Begin)
         rdfl.Read(buf, 0, siz)
         wrfl.Seek(pos, SeekOrigin.Begin)
         wrfl.Write(buf, 0, siz)
         wrfl.Flush()
     End Sub
+
+
+    Private Shared Function FileLen(ByRef fl As FileStream) As Long
+        fl.Seek(0, SeekOrigin.End)
+        Return fl.Position
+    End Function
+
+    Private Shared Function CheckAndCorrectFile(ByRef rdfl As FileStream, ByRef wrfl As FileStream, ByRef pos As Long, ByRef worker As BackgroundWorker) As Boolean
+        Dim tot, totwr As Long
+        tot = FileLen(rdfl)
+        totwr = FileLen(wrfl)
+        Dim buffer(blksiz - 1) As Byte
+        Dim vldbuf(blksiz - 1) As Byte
+        worker.ReportProgress(0, (pos, tot, "Checking Existing File, Correcting Wrong Blocks..."))
+        While pos < totwr - blksiz
+            If Not CheckBlock(rdfl, wrfl, pos, blksiz, buffer, vldbuf) Then
+                wrfl.Seek(pos, SeekOrigin.Begin)
+                wrfl.Write(buffer, 0, blksiz)
+            End If
+            pos = pos + blksiz
+            worker.ReportProgress(0, (pos, tot, "Checking Existing File, Correcting Wrong Blocks..."))
+        End While
+        ' Return true if the entire file is correct. false if more needs to be written.
+        If totwr <> tot Then Return False
+        If pos = totwr Then Return True
+        If Not CheckBlock(rdfl, wrfl, pos, totwr - pos, buffer, vldbuf) Then
+            wrfl.Seek(pos, SeekOrigin.Begin)
+            wrfl.Write(buffer, 0, totwr - pos)
+        End If
+        Return True
+    End Function
+
+
+    Private Shared Sub WriteOutFile(ByRef rdfl As FileStream, ByRef wrfl As FileStream, ByRef pos As Long, ByRef worker As BackgroundWorker)
+        Dim tot As Long
+        Dim buffer(blksiz - 1) As Byte
+        tot = FileLen(rdfl)
+        While pos < tot - blksiz
+            CopyBlock(rdfl, wrfl, pos, blksiz, Buffer)
+            pos = pos + blksiz
+            worker.ReportProgress(0, (pos, tot, "Copying..."))
+        End While
+        If pos <> tot Then
+            worker.ReportProgress(0, (tot, tot, "Flushing..."))
+            CopyBlock(rdfl, wrfl, pos, tot - pos, Buffer)
+        End If
+    End Sub
+
 
     Private Sub BackgroundWorker1_DoWork(sender As Object, e As System.ComponentModel.DoWorkEventArgs) Handles BackgroundWorker1.DoWork
         Dim worker As BackgroundWorker = TryCast(sender, BackgroundWorker)
@@ -116,11 +168,9 @@ Public Class Form1
         Dim pos, tot, totwr As Long
         pos = 0
         tot = 2
-        totwr
         Dim ovwr As CheckState = e.Argument.Item3
         Dim vldt As Boolean = e.Argument.Item4
         Try
-            Const blksiz As Long = 2048
             rdfl = File.OpenRead(e.Argument.Item1)
             wrfl = File.Open(e.Argument.Item2, FileMode.OpenOrCreate)
             rdfl.Seek(0, SeekOrigin.End)
@@ -172,8 +222,10 @@ CloseLabel:
     End Sub
 
     Private Sub SaveFileDialog1_FileOk(sender As Object, e As CancelEventArgs) Handles SaveFileDialog1.FileOk
-        TextBox2.Text = SaveFileDialog1.FileName
-        TextBox2_TextChanged(sender, e)
+        If Not e.Cancel Then
+            TextBox2.Text = SaveFileDialog1.FileName
+            TextBox2_TextChanged(sender, e)
+        End If
     End Sub
 
     Private Sub TextBox2_TextChanged(sender As Object, e As EventArgs) Handles TextBox2.TextChanged
