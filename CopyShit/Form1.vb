@@ -63,15 +63,16 @@ Public Class Form1
     Private Sub UpdateShit()
         If Not Copying Then Return
         Dim kbps, curtime As Double
-        curtime = (Now - StartTime).TotalMilliseconds
+        curtime = (LastBlock - StartTime).TotalMilliseconds
         If curtime < 1 Then Return
         kbps = (ProgressBar1.Value / curtime)
         KbpsBox.Text = kbps.ToString()
         KbpsBox.Update()
-        SinceLastBlockBox.Text = (Now - LastBlock).TotalMilliseconds
+        Dim SinceLastBlock As Double = (Now - LastBlock).TotalMilliseconds
+        SinceLastBlockBox.Text = SinceLastBlock
         SinceLastBlockBox.Update()
         If kbps < 1 Then Return
-        TimeLeftBox.Text = TimeSpan.FromMilliseconds((ProgressBar1.Maximum - ProgressBar1.Value) / kbps).ToString()
+        TimeLeftBox.Text = TimeSpan.FromMilliseconds((ProgressBar1.Maximum - ProgressBar1.Value) / kbps - SinceLastBlock).ToString()
         TimeLeftBox.Update()
         ProgressBar1.Update()
         BlockCountBox.Update()
