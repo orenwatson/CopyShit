@@ -122,6 +122,7 @@ Public Class Form1
         Dim tot, totwr As Long
         tot = FileLen(rdfl)
         totwr = FileLen(wrfl)
+        If totwr = 0 Then Return False
         Dim buffer(blksiz - 1) As Byte
         Dim vldbuf(blksiz - 1) As Byte
         worker.ReportProgress(0, (pos, tot, "Checking Existing File, Correcting Wrong Blocks..."))
@@ -175,41 +176,15 @@ Public Class Form1
             wrfl = File.Open(e.Argument.Item2, FileMode.OpenOrCreate)
             rdfl.Seek(0, SeekOrigin.End)
             worker.ReportProgress(0, (0, tot, "Beginning Copy"))
-ValidLabel:
             wrfl.Seek(0, SeekOrigin.End)
             totwr = wrfl.Position
             pos = 0
-            Dim buffer(blksiz - 1) As Byte
-            Dim vldbuf(blksiz - 1) As Byte
-            If ovwr <> CheckState.Checked Then
-                worker.ReportProgress(0, (pos, tot, "Checking Existing..."))
-                While pos < totwr - blksiz
-                    If Not CheckBlock(rdfl, wrfl, pos, blksiz, buffer, vldbuf) Then
-                        wrfl.Seek(pos, SeekOrigin.Begin)
-                        wrfl.Write(buffer, 0, blksiz)
-                    End If
-                    pos = pos + blksiz
-                    worker.ReportProgress(0, (pos, tot, "Checking Existing..."))
-                End While
-                If totwr = tot AndAlso (pos = tot OrElse CheckBlock(rdfl, wrfl, pos, tot - pos, buffer, vldbuf)) Then
-                    GoTo CloseLabel
-                End If
+            If ovwr = CheckState.Checked OrElse Not CheckAndCorrectFile(rdfl, wrfl, pos, worker) Then
+                WriteOutFile(rdfl, wrfl, pos, worker)
             End If
-WriteLabel:
-            While pos < tot - blksiz
-                CopyBlock(rdfl, wrfl, pos, blksiz, buffer)
-                pos = pos + blksiz
-                worker.ReportProgress(0, (pos, tot, "Copying..."))
-            End While
-            If pos <> tot Then
-                CopyBlock(rdfl, wrfl, pos, tot - pos, buffer)
-            End If
-            worker.ReportProgress(0, (tot, tot, "Flushing..."))
-CloseLabel:
             If vldt Then
-                vldt = False
-                ovwr = CheckState.Unchecked
-                GoTo ValidLabel
+                pos = 0
+                CheckAndCorrectFile(rdfl, wrfl, pos, worker)
             End If
             rdfl.Dispose()
             wrfl.Dispose()
