@@ -47,6 +47,7 @@ Partial Class Form1
         Me.OverCheck = New System.Windows.Forms.CheckBox()
         Me.ExistCheck = New System.Windows.Forms.CheckBox()
         Me.ValidCheck = New System.Windows.Forms.CheckBox()
+        Me.RedCancelButton = New System.Windows.Forms.Button()
         Me.SuspendLayout()
         '
         'OpenFileDialog1
@@ -88,13 +89,14 @@ Partial Class Form1
         '
         'Button3
         '
-        Me.Button3.Font = New System.Drawing.Font("Segoe UI", 20.0!, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point)
+        Me.Button3.BackColor = System.Drawing.Color.LawnGreen
+        Me.Button3.Font = New System.Drawing.Font("Segoe UI", 26.25!, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point)
         Me.Button3.Location = New System.Drawing.Point(292, 138)
         Me.Button3.Name = "Button3"
         Me.Button3.Size = New System.Drawing.Size(202, 79)
         Me.Button3.TabIndex = 4
         Me.Button3.Text = "COPY"
-        Me.Button3.UseVisualStyleBackColor = True
+        Me.Button3.UseVisualStyleBackColor = False
         '
         'ProgressBar1
         '
@@ -108,6 +110,7 @@ Partial Class Form1
         'BackgroundWorker1
         '
         Me.BackgroundWorker1.WorkerReportsProgress = True
+        Me.BackgroundWorker1.WorkerSupportsCancellation = True
         '
         'TextBox3
         '
@@ -242,11 +245,26 @@ Partial Class Form1
         Me.ValidCheck.Text = "Validate"
         Me.ValidCheck.UseVisualStyleBackColor = True
         '
+        'RedCancelButton
+        '
+        Me.RedCancelButton.BackColor = System.Drawing.SystemColors.InactiveCaption
+        Me.RedCancelButton.Enabled = False
+        Me.RedCancelButton.FlatStyle = System.Windows.Forms.FlatStyle.Popup
+        Me.RedCancelButton.Font = New System.Drawing.Font("Segoe UI", 9.75!, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point)
+        Me.RedCancelButton.ForeColor = System.Drawing.Color.LightYellow
+        Me.RedCancelButton.Location = New System.Drawing.Point(643, 237)
+        Me.RedCancelButton.Name = "RedCancelButton"
+        Me.RedCancelButton.Size = New System.Drawing.Size(83, 29)
+        Me.RedCancelButton.TabIndex = 22
+        Me.RedCancelButton.Text = "CANCEL"
+        Me.RedCancelButton.UseVisualStyleBackColor = False
+        '
         'Form1
         '
         Me.AutoScaleDimensions = New System.Drawing.SizeF(7.0!, 15.0!)
         Me.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font
         Me.ClientSize = New System.Drawing.Size(800, 482)
+        Me.Controls.Add(Me.RedCancelButton)
         Me.Controls.Add(Me.ValidCheck)
         Me.Controls.Add(Me.ExistCheck)
         Me.Controls.Add(Me.OverCheck)
@@ -300,4 +318,5 @@ Partial Class Form1
     Friend WithEvents OverCheck As CheckBox
     Friend WithEvents ExistCheck As CheckBox
     Friend WithEvents ValidCheck As CheckBox
+    Friend WithEvents RedCancelButton As Button
 End Class

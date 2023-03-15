@@ -7,7 +7,12 @@
     <UseWindowsForms>true</UseWindowsForms>
     <MyType>WindowsForms</MyType>
     <Platforms>AnyCPU;x64</Platforms>
+    <ApplicationIcon>drawing.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="drawing.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <Import Include="System.Data" />

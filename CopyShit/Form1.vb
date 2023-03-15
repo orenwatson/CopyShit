@@ -1,6 +1,8 @@
 ﻿Imports System.ComponentModel
+Imports System.Data.SqlTypes
 Imports System.IO
 Imports System.Linq.Expressions
+Imports System.Windows.Forms.VisualStyles
 
 Public Class Form1
     Private Sub OpenFileDialog1_FileOk(sender As Object, e As System.ComponentModel.CancelEventArgs) Handles OpenFileDialog1.FileOk
@@ -40,6 +42,8 @@ Public Class Form1
             Button3.Enabled = False
             OverCheck.Enabled = False
             ValidCheck.Enabled = False
+            RedCancelButton.Enabled = True
+            RedCancelButton.BackColor = Color.Tomato
             Button3.Text = "COPYING"
             ProgressBar1.Minimum = 0
             ProgressBar1.Value = 0
@@ -58,6 +62,8 @@ Public Class Form1
         ValidCheck.Enabled = True
         Copying = False
         Button3.Text = "COPY"
+        RedCancelButton.Enabled = False
+        RedCancelButton.BackColor = SystemColors.InactiveCaption
     End Sub
 
     Private Sub UpdateShit()
@@ -72,7 +78,7 @@ Public Class Form1
         SinceLastBlockBox.Text = SinceLastBlock
         SinceLastBlockBox.Update()
         If kbps < 1 Then Return
-        TimeLeftBox.Text = TimeSpan.FromMilliseconds((ProgressBar1.Maximum - ProgressBar1.Value) / kbps - SinceLastBlock).ToString()
+        TimeLeftBox.Text = TimeSpan.FromMilliseconds((ProgressBar1.Maximum - ProgressBar1.Value) / kbps).ToString()
         TimeLeftBox.Update()
         ProgressBar1.Update()
         BlockCountBox.Update()
@@ -81,6 +87,7 @@ Public Class Form1
     End Sub
 
     Private Sub ReportProg(sender As Object, e As ProgressChangedEventArgs) Handles BackgroundWorker1.ProgressChanged
+        Copying = True
         ProgressBar1.Maximum = e.UserState.Item2
         ProgressBar1.Minimum = 0
         ProgressBar1.Value = e.UserState.Item1
@@ -96,16 +103,25 @@ Public Class Form1
 
 
     Private Const blksiz As Long = 2048
+    Private Const superblk As Long = 2048 * 2048
 
-    Private Shared Function CheckBlock(ByRef rdfl As FileStream, ByRef wrfl As FileStream, pos As Long, siz As Long, ByRef buf() As Byte, ByRef buf2() As Byte) As Boolean
+    Private Shared Sub CheckAndCorrectBlock(ByRef rdfl As FileStream, ByRef wrfl As FileStream, pos As Long, siz As Long, ByRef buf() As Byte, ByRef buf2() As Byte)
+        Debug.Assert(siz <= blksiz)
+        Debug.Assert(siz > 0)
         rdfl.Seek(pos, SeekOrigin.Begin)
         rdfl.Read(buf, 0, siz)
         wrfl.Seek(pos, SeekOrigin.Begin)
         wrfl.Read(buf2, 0, siz)
-        Return buf.SequenceEqual(buf2)
-    End Function
+        If Not buf.SequenceEqual(buf2) Then
+            wrfl.Seek(pos, SeekOrigin.Begin)
+            wrfl.Write(buf, 0, siz)
+            wrfl.Flush()
+        End If
+    End Sub
 
     Private Shared Sub CopyBlock(ByRef rdfl As FileStream, ByRef wrfl As FileStream, pos As Long, siz As Long, ByRef buf() As Byte)
+        Debug.Assert(siz <= blksiz)
+        Debug.Assert(siz > 0)
         rdfl.Seek(pos, SeekOrigin.Begin)
         rdfl.Read(buf, 0, siz)
         wrfl.Seek(pos, SeekOrigin.Begin)
@@ -114,51 +130,56 @@ Public Class Form1
     End Sub
 
 
-    Private Shared Function FileLen(ByRef fl As FileStream) As Long
-        fl.Seek(0, SeekOrigin.End)
-        Return fl.Position
-    End Function
-
-    Private Shared Function CheckAndCorrectFile(ByRef rdfl As FileStream, ByRef wrfl As FileStream, ByRef pos As Long, ByRef worker As BackgroundWorker) As Boolean
+    Private Shared Sub CheckAndCorrectFile(ByRef rdfl As FileStream, ByRef wrfl As FileStream, ByRef pos As Long, ByRef worker As BackgroundWorker)
         Dim tot, totwr As Long
-        tot = FileLen(rdfl)
-        totwr = FileLen(wrfl)
-        If totwr = 0 Then Return False
+        tot = rdfl.Length
+        totwr = wrfl.Length
+        If totwr = 0 Then Return
         Dim buffer(blksiz - 1) As Byte
         Dim vldbuf(blksiz - 1) As Byte
-        worker.ReportProgress(0, (pos, tot, "Checking Existing File, Correcting Wrong Blocks..."))
         While pos < totwr - blksiz
-            If Not CheckBlock(rdfl, wrfl, pos, blksiz, buffer, vldbuf) Then
-                wrfl.Seek(pos, SeekOrigin.Begin)
-                wrfl.Write(buffer, 0, blksiz)
-            End If
-            pos = pos + blksiz
             worker.ReportProgress(0, (pos, tot, "Checking Existing File, Correcting Wrong Blocks..."))
+            If worker.CancellationPending Then Throw New Exception("Copy Cancelled")
+            CheckAndCorrectBlock(rdfl, wrfl, pos, blksiz, buffer, vldbuf)
+            pos = pos + blksiz
+            If pos Mod superblk = 0 Then wrfl.Flush(True)
         End While
         ' Return true if the entire file is correct. false if more needs to be written.
-        If totwr <> tot Then Return False
-        If pos = totwr Then Return True
-        If Not CheckBlock(rdfl, wrfl, pos, totwr - pos, buffer, vldbuf) Then
-            wrfl.Seek(pos, SeekOrigin.Begin)
-            wrfl.Write(buffer, 0, totwr - pos)
+        If totwr <> tot Then Return
+        If pos = totwr Then
+            wrfl.Flush(True)
+            Return
         End If
-        Return True
-    End Function
+        worker.ReportProgress(0, (pos, tot, "Checking Existing File, Correcting Wrong Blocks..."))
+        CheckAndCorrectBlock(rdfl, wrfl, pos, totwr - pos, buffer, vldbuf)
+        pos = totwr
+        wrfl.Flush(True)
+        Return
+    End Sub
 
 
     Private Shared Sub WriteOutFile(ByRef rdfl As FileStream, ByRef wrfl As FileStream, ByRef pos As Long, ByRef worker As BackgroundWorker)
-        Dim tot As Long
+        Dim tot, totwr As Long
         Dim buffer(blksiz - 1) As Byte
-        tot = FileLen(rdfl)
+        tot = rdfl.Length
+        totwr = wrfl.Length
+        If totwr <> tot Then wrfl.SetLength(tot) ' prealloc sectors?
+        If pos = tot Then Return
         While pos < tot - blksiz
-            CopyBlock(rdfl, wrfl, pos, blksiz, Buffer)
-            pos = pos + blksiz
             worker.ReportProgress(0, (pos, tot, "Copying..."))
+            If worker.CancellationPending Then
+                wrfl.SetLength(pos)
+                Throw New Exception("Copy Cancelled")
+            End If
+            CopyBlock(rdfl, wrfl, pos, blksiz, buffer)
+            pos = pos + blksiz
+            If pos Mod superblk = 0 Then wrfl.Flush(True)
         End While
+        worker.ReportProgress(0, (pos, tot, "Flushing..."))
         If pos <> tot Then
-            worker.ReportProgress(0, (tot, tot, "Flushing..."))
-            CopyBlock(rdfl, wrfl, pos, tot - pos, Buffer)
+            CopyBlock(rdfl, wrfl, pos, tot - pos, buffer)
         End If
+        wrfl.Flush(True)
     End Sub
 
 
@@ -174,19 +195,18 @@ Public Class Form1
         Dim vldt As Boolean = e.Argument.Item4
         Try
             rdfl = File.OpenRead(e.Argument.Item1)
+            tot = rdfl.Length
             wrfl = File.Open(e.Argument.Item2, FileMode.OpenOrCreate)
-            rdfl.Seek(0, SeekOrigin.End)
+            totwr = wrfl.Length
             worker.ReportProgress(0, (0, tot, "Beginning Copy"))
-            wrfl.Seek(0, SeekOrigin.End)
-            totwr = wrfl.Position
             pos = 0
-            If ovwr = CheckState.Checked OrElse Not CheckAndCorrectFile(rdfl, wrfl, pos, worker) Then
-                WriteOutFile(rdfl, wrfl, pos, worker)
-            End If
+            If ovwr <> CheckState.Checked Then CheckAndCorrectFile(rdfl, wrfl, pos, worker)
+            WriteOutFile(rdfl, wrfl, pos, worker)
             If vldt Then
                 pos = 0
                 CheckAndCorrectFile(rdfl, wrfl, pos, worker)
             End If
+            worker.ReportProgress(0, (tot, tot, "Closing Files..."))
             rdfl.Dispose()
             wrfl.Dispose()
             worker.ReportProgress(0, (tot, tot, "Done."))
@@ -215,6 +235,19 @@ Public Class Form1
         End If
         ExistCheck.Update()
         OverCheck.Update()
+    End Sub
+
+    Private Sub Form1_FormClosing(sender As Object, e As FormClosingEventArgs) Handles MyBase.FormClosing
+        If Copying Then
+            CancelButton_Click(sender, e)
+            e.Cancel = True
+        End If
+    End Sub
+
+    Private Sub CancelButton_Click(sender As Object, e As EventArgs) Handles RedCancelButton.Click
+        RedCancelButton.Enabled = False
+        RedCancelButton.BackColor = SystemColors.InactiveCaption
+        BackgroundWorker1.CancelAsync()
     End Sub
 
     Private Sub Timer1_Tick(sender As Object, e As EventArgs) Handles Timer1.Tick
