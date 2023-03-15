@@ -4,7 +4,17 @@ Imports System.IO
 Imports System.Linq.Expressions
 Imports System.Windows.Forms.VisualStyles
 
+
 Public Class Form1
+
+    Private Class Cancellation
+        Inherits Exception
+
+        Public Sub New(message As String)
+            MyBase.New(message)
+        End Sub
+    End Class
+
     Private Sub OpenFileDialog1_FileOk(sender As Object, e As System.ComponentModel.CancelEventArgs) Handles OpenFileDialog1.FileOk
         TextBox1.Text = OpenFileDialog1.FileName
         If TextBox2.Text <> "" Then
@@ -19,16 +29,19 @@ Public Class Form1
     End Sub
 
     Private Sub Button1_Click(sender As Object, e As EventArgs) Handles Button1.Click
+        OpenFileDialog1.InitialDirectory = Path.GetDirectoryName(TextBox1.Text)
         OpenFileDialog1.ShowDialog()
     End Sub
 
     Private Sub Button2_Click(sender As Object, e As EventArgs) Handles Button2.Click
+        SaveFileDialog1.InitialDirectory = Path.GetDirectoryName(TextBox2.Text)
         SaveFileDialog1.FileName = Path.GetFileName(TextBox1.Text)
         SaveFileDialog1.ShowDialog()
     End Sub
 
     Private StartTime, LastBlock As DateTime
     Private Copying As Boolean = False
+    Private ByteCount, ByteNum As Long
 
     Private Sub Button3_Click(sender As Object, e As EventArgs) Handles Button3.Click
         If Not BackgroundWorker1.IsBusy Then
@@ -45,8 +58,7 @@ Public Class Form1
             RedCancelButton.Enabled = True
             RedCancelButton.BackColor = Color.Tomato
             Button3.Text = "COPYING"
-            ProgressBar1.Minimum = 0
-            ProgressBar1.Value = 0
+            ProgBarFgPanel.Visible = False
             StartTime = Now
             Copying = True
             BackgroundWorker1.RunWorkerAsync((rdfn, wrfn, OverCheck.CheckState, ValidCheck.Checked))
@@ -66,31 +78,36 @@ Public Class Form1
         RedCancelButton.BackColor = SystemColors.InactiveCaption
     End Sub
 
+
+
     Private Sub UpdateShit()
         If Not Copying Then Return
         Dim kbps, curtime As Double
         curtime = (LastBlock - StartTime).TotalMilliseconds
         If curtime < 1 Then Return
-        kbps = (ProgressBar1.Value / curtime)
+        kbps = (ByteNum / curtime) ' bytes / ms = kb / s
         KbpsBox.Text = kbps.ToString()
         KbpsBox.Update()
         Dim SinceLastBlock As Double = (Now - LastBlock).TotalMilliseconds
         SinceLastBlockBox.Text = SinceLastBlock
         SinceLastBlockBox.Update()
         If kbps < 1 Then Return
-        TimeLeftBox.Text = TimeSpan.FromMilliseconds((ProgressBar1.Maximum - ProgressBar1.Value) / kbps).ToString()
+        TimeLeftBox.Text = TimeSpan.FromMilliseconds((ByteCount - ByteNum) / kbps).ToString()
         TimeLeftBox.Update()
-        ProgressBar1.Update()
         BlockCountBox.Update()
         BlockNumBox.Update()
         TextBox3.Update()
     End Sub
 
+    Private Shared Colours() As Color = {Color.Black, Color.Blue, Color.Turquoise, Color.Green, Color.Yellow, Color.Red}
+
     Private Sub ReportProg(sender As Object, e As ProgressChangedEventArgs) Handles BackgroundWorker1.ProgressChanged
+        ByteCount = e.UserState.Item2
+        ByteNum = e.UserState.Item1
         Copying = True
-        ProgressBar1.Maximum = e.UserState.Item2
-        ProgressBar1.Minimum = 0
-        ProgressBar1.Value = e.UserState.Item1
+        ProgBarFgPanel.Width = Convert.ToInt64(Convert.ToDouble(ProgBarBgPanel.Width) * ByteNum / ByteCount)
+        ProgBarFgPanel.BackColor = Colours(e.UserState.Item4)
+        ProgBarFgPanel.Visible = True
         BlockCountBox.Text = Int(e.UserState.Item2 / 2048)
         BlockNumBox.Text = e.UserState.Item1 / 2048
         TextBox3.Text = e.UserState.Item3
@@ -138,8 +155,8 @@ Public Class Form1
         Dim buffer(blksiz - 1) As Byte
         Dim vldbuf(blksiz - 1) As Byte
         While pos < totwr - blksiz
-            worker.ReportProgress(0, (pos, tot, "Checking Existing File, Correcting Wrong Blocks..."))
-            If worker.CancellationPending Then Throw New Exception("Copy Cancelled")
+            worker.ReportProgress(0, (pos, tot, "Checking Existing File, Correcting Wrong Blocks...", 2))
+            If worker.CancellationPending Then Throw New Cancellation("Copy Cancelled")
             CheckAndCorrectBlock(rdfl, wrfl, pos, blksiz, buffer, vldbuf)
             pos = pos + blksiz
             If pos Mod superblk = 0 Then wrfl.Flush(True)
@@ -150,7 +167,7 @@ Public Class Form1
             wrfl.Flush(True)
             Return
         End If
-        worker.ReportProgress(0, (pos, tot, "Checking Existing File, Correcting Wrong Blocks..."))
+        worker.ReportProgress(0, (pos, tot, "Checking Existing File, Correcting Wrong Blocks...", 2))
         CheckAndCorrectBlock(rdfl, wrfl, pos, totwr - pos, buffer, vldbuf)
         pos = totwr
         wrfl.Flush(True)
@@ -166,16 +183,16 @@ Public Class Form1
         If totwr <> tot Then wrfl.SetLength(tot) ' prealloc sectors?
         If pos = tot Then Return
         While pos < tot - blksiz
-            worker.ReportProgress(0, (pos, tot, "Copying..."))
+            worker.ReportProgress(0, (pos, tot, "Copying...", 3))
             If worker.CancellationPending Then
                 wrfl.SetLength(pos)
-                Throw New Exception("Copy Cancelled")
+                Throw New Cancellation("Copy Cancelled")
             End If
             CopyBlock(rdfl, wrfl, pos, blksiz, buffer)
             pos = pos + blksiz
             If pos Mod superblk = 0 Then wrfl.Flush(True)
         End While
-        worker.ReportProgress(0, (pos, tot, "Flushing..."))
+        worker.ReportProgress(0, (pos, tot, "Flushing...", 3))
         If pos <> tot Then
             CopyBlock(rdfl, wrfl, pos, tot - pos, buffer)
         End If
@@ -198,7 +215,7 @@ Public Class Form1
             tot = rdfl.Length
             wrfl = File.Open(e.Argument.Item2, FileMode.OpenOrCreate)
             totwr = wrfl.Length
-            worker.ReportProgress(0, (0, tot, "Beginning Copy"))
+            worker.ReportProgress(0, (0, tot, "Beginning Copy", 0))
             pos = 0
             If ovwr <> CheckState.Checked Then CheckAndCorrectFile(rdfl, wrfl, pos, worker)
             WriteOutFile(rdfl, wrfl, pos, worker)
@@ -206,12 +223,16 @@ Public Class Form1
                 pos = 0
                 CheckAndCorrectFile(rdfl, wrfl, pos, worker)
             End If
-            worker.ReportProgress(0, (tot, tot, "Closing Files..."))
+            worker.ReportProgress(0, (tot, tot, "Closing Files...", 1))
             rdfl.Dispose()
             wrfl.Dispose()
-            worker.ReportProgress(0, (tot, tot, "Done."))
+            worker.ReportProgress(0, (tot, tot, "Done.", 1))
+        Catch cx As Cancellation
+            worker.ReportProgress(0, (pos, tot, "Copy Cancelled", 4))
+            If rdfl IsNot Nothing Then rdfl.Dispose()
+            If wrfl IsNot Nothing Then wrfl.Dispose()
         Catch ex As Exception
-            worker.ReportProgress(0, (pos, tot, "Error: " & ex.ToString()))
+            worker.ReportProgress(0, (pos, tot, "Error: " & ex.ToString(), 5))
             If rdfl IsNot Nothing Then rdfl.Dispose()
             If wrfl IsNot Nothing Then wrfl.Dispose()
         End Try

@@ -29,7 +29,6 @@ Partial Class Form1
         Me.Button2 = New System.Windows.Forms.Button()
         Me.TextBox2 = New System.Windows.Forms.TextBox()
         Me.Button3 = New System.Windows.Forms.Button()
-        Me.ProgressBar1 = New System.Windows.Forms.ProgressBar()
         Me.BackgroundWorker1 = New System.ComponentModel.BackgroundWorker()
         Me.TextBox3 = New System.Windows.Forms.TextBox()
         Me.Label2 = New System.Windows.Forms.Label()
@@ -48,11 +47,16 @@ Partial Class Form1
         Me.ExistCheck = New System.Windows.Forms.CheckBox()
         Me.ValidCheck = New System.Windows.Forms.CheckBox()
         Me.RedCancelButton = New System.Windows.Forms.Button()
+        Me.ProgBarBgPanel = New System.Windows.Forms.Panel()
+        Me.ProgBarFgPanel = New System.Windows.Forms.Panel()
+        Me.ProgBarBgPanel.SuspendLayout()
         Me.SuspendLayout()
         '
         'OpenFileDialog1
         '
         Me.OpenFileDialog1.FileName = "OpenFileDialog1"
+        Me.OpenFileDialog1.RestoreDirectory = True
+        Me.OpenFileDialog1.SupportMultiDottedExtensions = True
         Me.OpenFileDialog1.Title = "FILE TO READ"
         '
         'TextBox1
@@ -97,15 +101,6 @@ Partial Class Form1
         Me.Button3.TabIndex = 4
         Me.Button3.Text = "COPY"
         Me.Button3.UseVisualStyleBackColor = False
-        '
-        'ProgressBar1
-        '
-        Me.ProgressBar1.Location = New System.Drawing.Point(12, 316)
-        Me.ProgressBar1.Name = "ProgressBar1"
-        Me.ProgressBar1.Size = New System.Drawing.Size(776, 29)
-        Me.ProgressBar1.Step = 0
-        Me.ProgressBar1.Style = System.Windows.Forms.ProgressBarStyle.Continuous
-        Me.ProgressBar1.TabIndex = 5
         '
         'BackgroundWorker1
         '
@@ -196,6 +191,8 @@ Partial Class Form1
         '
         'SaveFileDialog1
         '
+        Me.SaveFileDialog1.RestoreDirectory = True
+        Me.SaveFileDialog1.SupportMultiDottedExtensions = True
         '
         'TimeLeftBox
         '
@@ -259,11 +256,31 @@ Partial Class Form1
         Me.RedCancelButton.Text = "CANCEL"
         Me.RedCancelButton.UseVisualStyleBackColor = False
         '
+        'ProgBarBgPanel
+        '
+        Me.ProgBarBgPanel.BorderStyle = System.Windows.Forms.BorderStyle.Fixed3D
+        Me.ProgBarBgPanel.Controls.Add(Me.ProgBarFgPanel)
+        Me.ProgBarBgPanel.Location = New System.Drawing.Point(12, 306)
+        Me.ProgBarBgPanel.Name = "ProgBarBgPanel"
+        Me.ProgBarBgPanel.Size = New System.Drawing.Size(776, 39)
+        Me.ProgBarBgPanel.TabIndex = 23
+        '
+        'ProgBarFgPanel
+        '
+        Me.ProgBarFgPanel.BackColor = System.Drawing.Color.Gray
+        Me.ProgBarFgPanel.Location = New System.Drawing.Point(0, 0)
+        Me.ProgBarFgPanel.Margin = New System.Windows.Forms.Padding(0)
+        Me.ProgBarFgPanel.Name = "ProgBarFgPanel"
+        Me.ProgBarFgPanel.Size = New System.Drawing.Size(99, 39)
+        Me.ProgBarFgPanel.TabIndex = 0
+        Me.ProgBarFgPanel.Visible = False
+        '
         'Form1
         '
         Me.AutoScaleDimensions = New System.Drawing.SizeF(7.0!, 15.0!)
         Me.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font
         Me.ClientSize = New System.Drawing.Size(800, 482)
+        Me.Controls.Add(Me.ProgBarBgPanel)
         Me.Controls.Add(Me.RedCancelButton)
         Me.Controls.Add(Me.ValidCheck)
         Me.Controls.Add(Me.ExistCheck)
@@ -279,7 +296,6 @@ Partial Class Form1
         Me.Controls.Add(Me.KbpsBox)
         Me.Controls.Add(Me.Label2)
         Me.Controls.Add(Me.TextBox3)
-        Me.Controls.Add(Me.ProgressBar1)
         Me.Controls.Add(Me.Button3)
         Me.Controls.Add(Me.TextBox2)
         Me.Controls.Add(Me.Button2)
@@ -287,6 +303,7 @@ Partial Class Form1
         Me.Controls.Add(Me.TextBox1)
         Me.Name = "Form1"
         Me.Text = "CopyShit.EXE"
+        Me.ProgBarBgPanel.ResumeLayout(False)
         Me.ResumeLayout(False)
         Me.PerformLayout()
 
@@ -298,7 +315,6 @@ Partial Class Form1
     Friend WithEvents Button2 As Button
     Friend WithEvents TextBox2 As TextBox
     Friend WithEvents Button3 As Button
-    Friend WithEvents ProgressBar1 As ProgressBar
     Friend WithEvents BackgroundWorker1 As System.ComponentModel.BackgroundWorker
     Friend WithEvents TextBox3 As TextBox
     Friend WithEvents LastblocktimeBox As TextBox
@@ -319,4 +335,6 @@ Partial Class Form1
     Friend WithEvents ExistCheck As CheckBox
     Friend WithEvents ValidCheck As CheckBox
     Friend WithEvents RedCancelButton As Button
+    Friend WithEvents ProgBarBgPanel As Panel
+    Friend WithEvents ProgBarFgPanel As Panel
 End Class
