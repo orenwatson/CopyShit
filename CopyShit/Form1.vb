@@ -118,6 +118,7 @@ Public Class Form1
     End Sub
 
     Private Sub FinishWork(sender As Object, e As RunWorkerCompletedEventArgs) Handles BackgroundWorker1.RunWorkerCompleted
+        My.Computer.Audio.PlaySystemSound(Media.SystemSounds.Exclamation)
         ReenableEverything()
     End Sub
 
@@ -125,6 +126,10 @@ Public Class Form1
     Private Const blksiz As Long = 2048
     Private Const superblk As Long = 2048 * 2048
 
+
+    Private Shared Sub SeekOrDont(ByRef fl As FileStream, pos As Long)
+        If fl.Position <> pos Then fl.Seek(pos, SeekOrigin.Begin)
+    End Sub
 
     Private Shared Sub FinishOrCancel(ByRef t As Task, ByRef c As CancellationTokenSource, ByRef worker As BackgroundWorker, c_mesg As String, b_mesg As String)
         Dim n As Long = 0
@@ -154,9 +159,9 @@ Public Class Form1
     Private Shared Sub CheckAndCorrectBlock(ByRef worker As BackgroundWorker, ByRef rdfl As FileStream, ByRef wrfl As FileStream, pos As Long, siz As Long, ByRef buf() As Byte, ByRef buf2() As Byte)
         Debug.Assert(siz <= blksiz)
         Debug.Assert(siz > 0)
-        rdfl.Seek(pos, SeekOrigin.Begin)
+        SeekOrDont(rdfl, pos)
         rdfl.Read(buf, 0, siz)
-        If wrfl.Position <> pos Then wrfl.Seek(pos, SeekOrigin.Begin)
+        SeekOrDont(wrfl, pos)
         wrfl.Read(buf2, 0, siz)
         If Not buf.SequenceEqual(buf2) Then
             wrfl.Seek(pos, SeekOrigin.Begin)
@@ -167,9 +172,9 @@ Public Class Form1
     Private Shared Sub CopyBlock(ByRef worker As BackgroundWorker, ByRef rdfl As FileStream, ByRef wrfl As FileStream, pos As Long, siz As Long, ByRef buf() As Byte)
         Debug.Assert(siz <= blksiz)
         Debug.Assert(siz > 0)
-        rdfl.Seek(pos, SeekOrigin.Begin)
+        SeekOrDont(rdfl, pos)
         rdfl.Read(buf, 0, siz)
-        If wrfl.Position <> pos Then wrfl.Seek(pos, SeekOrigin.Begin)
+        SeekOrDont(wrfl, pos)
         WriteOrCancel(wrfl, siz, buf, worker)
     End Sub
 
