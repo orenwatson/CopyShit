@@ -2,6 +2,7 @@
 Imports System.Data.SqlTypes
 Imports System.IO
 Imports System.Linq.Expressions
+Imports System.Threading
 Imports System.Windows.Forms.VisualStyles
 
 
@@ -102,16 +103,18 @@ Public Class Form1
     Private Shared Colours() As Color = {Color.Black, Color.Blue, Color.Turquoise, Color.Green, Color.Yellow, Color.Red}
 
     Private Sub ReportProg(sender As Object, e As ProgressChangedEventArgs) Handles BackgroundWorker1.ProgressChanged
-        ByteCount = e.UserState.Item2
-        ByteNum = e.UserState.Item1
+        If e.UserState.Item2 IsNot Nothing Then
+            ByteCount = e.UserState.Item2
+            ByteNum = e.UserState.Item1
+            LastBlock = Now
+        End If
+        TextBox3.Text = e.UserState.Item3
         Copying = True
+        BlockCountBox.Text = Int(ByteCount / 2048)
+        BlockNumBox.Text = ByteNum / 2048
         ProgBarFgPanel.Width = Convert.ToInt64(Convert.ToDouble(ProgBarBgPanel.Width) * ByteNum / ByteCount)
         ProgBarFgPanel.BackColor = Colours(e.UserState.Item4)
         ProgBarFgPanel.Visible = True
-        BlockCountBox.Text = Int(e.UserState.Item2 / 2048)
-        BlockNumBox.Text = e.UserState.Item1 / 2048
-        TextBox3.Text = e.UserState.Item3
-        LastBlock = Now
     End Sub
 
     Private Sub FinishWork(sender As Object, e As RunWorkerCompletedEventArgs) Handles BackgroundWorker1.RunWorkerCompleted
@@ -122,28 +125,52 @@ Public Class Form1
     Private Const blksiz As Long = 2048
     Private Const superblk As Long = 2048 * 2048
 
-    Private Shared Sub CheckAndCorrectBlock(ByRef rdfl As FileStream, ByRef wrfl As FileStream, pos As Long, siz As Long, ByRef buf() As Byte, ByRef buf2() As Byte)
+
+    Private Shared Sub FinishOrCancel(ByRef t As Task, ByRef c As CancellationTokenSource, ByRef worker As BackgroundWorker, c_mesg As String, b_mesg As String)
+        Dim n As Long = 0
+        While Not t.IsCompleted
+            If worker.CancellationPending Then
+                c.Cancel()
+                Throw New Cancellation(c_mesg)
+            End If
+            t.Wait(TimeSpan.FromMilliseconds(200))
+            If 1 = n Then worker.ReportProgress(0, (Nothing, Nothing, b_mesg, 0))
+            n = n + 1
+        End While
+    End Sub
+
+    Private Shared Sub WriteOrCancel(ByRef wrfl As FileStream, siz As Long, ByRef buf() As Byte, ByRef worker As BackgroundWorker)
+        Dim c As CancellationTokenSource = New CancellationTokenSource()
+        Dim t As Task = wrfl.WriteAsync(buf, 0, siz, c.Token)
+        FinishOrCancel(t, c, worker, "Copy Cancelled During Write", "Write Blocking...")
+    End Sub
+
+    Private Shared Sub FlushOrCancel(ByRef wrfl As FileStream, ByRef worker As BackgroundWorker)
+        Dim c As CancellationTokenSource = New CancellationTokenSource()
+        Dim t As Task = wrfl.FlushAsync(c.Token)
+        FinishOrCancel(t, c, worker, "Copy Cancelled During Flush", "Flushing Out To Disk...")
+    End Sub
+
+    Private Shared Sub CheckAndCorrectBlock(ByRef worker As BackgroundWorker, ByRef rdfl As FileStream, ByRef wrfl As FileStream, pos As Long, siz As Long, ByRef buf() As Byte, ByRef buf2() As Byte)
         Debug.Assert(siz <= blksiz)
         Debug.Assert(siz > 0)
         rdfl.Seek(pos, SeekOrigin.Begin)
         rdfl.Read(buf, 0, siz)
-        wrfl.Seek(pos, SeekOrigin.Begin)
+        If wrfl.Position <> pos Then wrfl.Seek(pos, SeekOrigin.Begin)
         wrfl.Read(buf2, 0, siz)
         If Not buf.SequenceEqual(buf2) Then
             wrfl.Seek(pos, SeekOrigin.Begin)
-            wrfl.Write(buf, 0, siz)
-            wrfl.Flush()
+            WriteOrCancel(wrfl, siz, buf, worker)
         End If
     End Sub
 
-    Private Shared Sub CopyBlock(ByRef rdfl As FileStream, ByRef wrfl As FileStream, pos As Long, siz As Long, ByRef buf() As Byte)
+    Private Shared Sub CopyBlock(ByRef worker As BackgroundWorker, ByRef rdfl As FileStream, ByRef wrfl As FileStream, pos As Long, siz As Long, ByRef buf() As Byte)
         Debug.Assert(siz <= blksiz)
         Debug.Assert(siz > 0)
         rdfl.Seek(pos, SeekOrigin.Begin)
         rdfl.Read(buf, 0, siz)
-        wrfl.Seek(pos, SeekOrigin.Begin)
-        wrfl.Write(buf, 0, siz)
-        wrfl.Flush()
+        If wrfl.Position <> pos Then wrfl.Seek(pos, SeekOrigin.Begin)
+        WriteOrCancel(wrfl, siz, buf, worker)
     End Sub
 
 
@@ -152,25 +179,29 @@ Public Class Form1
         tot = rdfl.Length
         totwr = wrfl.Length
         If totwr = 0 Then Return
+        If tot < totwr Then
+            wrfl.SetLength(tot)
+            totwr = tot
+        End If
         Dim buffer(blksiz - 1) As Byte
         Dim vldbuf(blksiz - 1) As Byte
         While pos < totwr - blksiz
             worker.ReportProgress(0, (pos, tot, "Checking Existing File, Correcting Wrong Blocks...", 2))
             If worker.CancellationPending Then Throw New Cancellation("Copy Cancelled")
-            CheckAndCorrectBlock(rdfl, wrfl, pos, blksiz, buffer, vldbuf)
+            CheckAndCorrectBlock(worker, rdfl, wrfl, pos, blksiz, buffer, vldbuf)
             pos = pos + blksiz
-            If pos Mod superblk = 0 Then wrfl.Flush(True)
+            If pos Mod superblk = 0 Then FlushOrCancel(wrfl, worker)
         End While
         ' Return true if the entire file is correct. false if more needs to be written.
         If totwr <> tot Then Return
         If pos = totwr Then
-            wrfl.Flush(True)
+            FlushOrCancel(wrfl, worker)
             Return
         End If
         worker.ReportProgress(0, (pos, tot, "Checking Existing File, Correcting Wrong Blocks...", 2))
-        CheckAndCorrectBlock(rdfl, wrfl, pos, totwr - pos, buffer, vldbuf)
+        CheckAndCorrectBlock(worker, rdfl, wrfl, pos, totwr - pos, buffer, vldbuf)
         pos = totwr
-        wrfl.Flush(True)
+        FlushOrCancel(wrfl, worker)
         Return
     End Sub
 
@@ -180,23 +211,19 @@ Public Class Form1
         Dim buffer(blksiz - 1) As Byte
         tot = rdfl.Length
         totwr = wrfl.Length
-        If totwr <> tot Then wrfl.SetLength(tot) ' prealloc sectors?
         If pos = tot Then Return
         While pos < tot - blksiz
             worker.ReportProgress(0, (pos, tot, "Copying...", 3))
-            If worker.CancellationPending Then
-                wrfl.SetLength(pos)
-                Throw New Cancellation("Copy Cancelled")
-            End If
-            CopyBlock(rdfl, wrfl, pos, blksiz, buffer)
+            If worker.CancellationPending Then Throw New Cancellation("Copy Cancelled")
+            CopyBlock(worker, rdfl, wrfl, pos, blksiz, buffer)
             pos = pos + blksiz
-            If pos Mod superblk = 0 Then wrfl.Flush(True)
+            If pos Mod superblk = 0 Then FlushOrCancel(wrfl, worker)
         End While
         worker.ReportProgress(0, (pos, tot, "Flushing...", 3))
         If pos <> tot Then
-            CopyBlock(rdfl, wrfl, pos, tot - pos, buffer)
+            CopyBlock(worker, rdfl, wrfl, pos, tot - pos, buffer)
         End If
-        wrfl.Flush(True)
+        FlushOrCancel(wrfl, worker)
     End Sub
 
 
@@ -210,10 +237,18 @@ Public Class Form1
         tot = 2
         Dim ovwr As CheckState = e.Argument.Item3
         Dim vldt As Boolean = e.Argument.Item4
+        Dim rdpt, wrpt As String
+        rdpt = e.Argument.Item1
+        wrpt = e.Argument.Item2
         Try
-            rdfl = File.OpenRead(e.Argument.Item1)
+            rdfl = File.OpenRead(rdpt)
             tot = rdfl.Length
-            wrfl = File.Open(e.Argument.Item2, FileMode.OpenOrCreate)
+            ' wrfl = New FileStream(wrpt, FileOptions.Asynchronous)
+            Dim opts As New FileStreamOptions()
+            opts.Options = FileOptions.Asynchronous Or FileOptions.WriteThrough
+            opts.Mode = FileMode.OpenOrCreate
+            opts.Access = FileAccess.ReadWrite
+            wrfl = File.Open(e.Argument.Item2, opts)
             totwr = wrfl.Length
             worker.ReportProgress(0, (0, tot, "Beginning Copy", 0))
             pos = 0
