@@ -2,9 +2,10 @@
 Imports System.Data.SqlTypes
 Imports System.IO
 Imports System.Linq.Expressions
+Imports System.Runtime.Serialization
 Imports System.Threading
 Imports System.Windows.Forms.VisualStyles
-
+Imports System.Xml
 
 Public Class Form1
 
@@ -87,13 +88,15 @@ Public Class Form1
         curtime = (LastBlock - StartTime).TotalMilliseconds
         If curtime < 1 Then Return
         kbps = (ByteNum / curtime) ' bytes / ms = kb / s
-        KbpsBox.Text = kbps.ToString()
+        KbpsBox.Text = Format(kbps, "0.000")
         KbpsBox.Update()
         Dim SinceLastBlock As Double = (Now - LastBlock).TotalMilliseconds
-        SinceLastBlockBox.Text = SinceLastBlock
+        SinceLastBlockBox.Text = Format(SinceLastBlock, "0.000")
         SinceLastBlockBox.Update()
         If kbps < 1 Then Return
         TimeLeftBox.Text = TimeSpan.FromMilliseconds((ByteCount - ByteNum) / kbps).ToString()
+        ElapsedBox.Text = (Now - StartTime).ToString()
+        PercentBox.Text = Format(Convert.ToDouble(ByteNum) / ByteCount, "Percent")
         TimeLeftBox.Update()
         BlockCountBox.Update()
         BlockNumBox.Update()
@@ -119,6 +122,8 @@ Public Class Form1
 
     Private Sub FinishWork(sender As Object, e As RunWorkerCompletedEventArgs) Handles BackgroundWorker1.RunWorkerCompleted
         My.Computer.Audio.PlaySystemSound(Media.SystemSounds.Exclamation)
+        PercentBox.Text = Format(Convert.ToDouble(ByteNum) / ByteCount, "Percent")
+        ElapsedBox.Text = (Now - StartTime).ToString()
         ReenableEverything()
     End Sub
 
